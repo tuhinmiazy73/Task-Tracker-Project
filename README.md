@@ -1,4 +1,4 @@
-In this project, we’ll walk through creating a Jenkins CI/CD pipeline that automates cloning a GitHub repository into a remote production server via SSH, step-by-step.
+In this project, we’ll walk through creating a Jenkins CI/CD pipeline that automates the deployment of a Web Application into a remote production server via SSH, step-by-step.
 
 📌 Step-by-Step Guide
 
