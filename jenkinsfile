@@ -1,0 +1,92 @@
+pipeline {
+    agent any
+
+    environment {
+        WORKER_NODE_IP = '192.168.150.131'
+        GIT_REPO = 'https://github.com/tuhinmiazy73/Task-Tracker-Project.git'
+        BRANCH = 'main'
+        DEPLOY_DIR = '/var/www/html'
+        BACKUP_DIR = '/var/www/html_backup'
+    }
+
+    stages {
+
+        stage('SSH Login Test') {
+            steps {
+                withCredentials([sshUserPrivateKey(credentialsId: 'JenkinsToWorkerSSH', keyFileVariable: 'SSH_KEY')]) {
+                    sh '''
+                        ssh -i $SSH_KEY -o StrictHostKeyChecking=no root@$WORKER_NODE_IP "echo '✅ SSH Login Successful'"
+                    '''
+                }
+            }
+        }
+
+        stage('Backup Current Deployment') {
+            steps {
+                withCredentials([sshUserPrivateKey(credentialsId: 'JenkinsToWorkerSSH', keyFileVariable: 'SSH_KEY')]) {
+                    sh """
+                        ssh -i \$SSH_KEY -o StrictHostKeyChecking=no root@${WORKER_NODE_IP} '
+                            DEPLOY_DIR="${DEPLOY_DIR}"
+                            BACKUP_DIR="${BACKUP_DIR}"
+                            TIMESTAMP=\$(date +%Y%m%d_%H%M%S)
+                            BACKUP_PATH="\$BACKUP_DIR/backup_\$TIMESTAMP"
+
+                            mkdir -p "\$BACKUP_PATH"
+
+                            if [ "\$(ls -A \$DEPLOY_DIR)" ]; then
+                                mv \$DEPLOY_DIR/* "\$BACKUP_PATH/"
+                                echo "📦 Backup completed to \$BACKUP_PATH"
+                            else
+                                echo "ℹ️ No files to backup"
+                            fi
+                        '
+                    """
+                }
+            }
+        }
+
+        stage('Pull Latest Code') {
+            steps {
+                withCredentials([sshUserPrivateKey(credentialsId: 'JenkinsToWorkerSSH', keyFileVariable: 'SSH_KEY')]) {
+                    sh """
+                        ssh -i \$SSH_KEY -o StrictHostKeyChecking=no root@${WORKER_NODE_IP} '
+                            DEPLOY_DIR="${DEPLOY_DIR}"
+
+                            if [ -d \$DEPLOY_DIR/.git ]; then
+                                cd \$DEPLOY_DIR
+                                git reset --hard
+                                git pull origin ${BRANCH}
+                                echo "🔄 Pulled latest code from GitHub"
+                            else
+                                echo "❌ Not a git repository. Please clone it first manually."
+                                exit 1
+                            fi
+                        '
+                    """
+                }
+            }
+        }
+
+        stage('Restart Apache Server') {
+            steps {
+                withCredentials([sshUserPrivateKey(credentialsId: 'JenkinsToWorkerSSH', keyFileVariable: 'SSH_KEY')]) {
+                    sh """
+                        ssh -i \$SSH_KEY -o StrictHostKeyChecking=no root@${WORKER_NODE_IP} '
+                            systemctl restart httpd && \
+                            echo "🔁 Apache restarted successfully"
+                        '
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        failure {
+            echo "❌ Deployment failed. Please check logs."
+        }
+        success {
+            echo "✅ Deployment completed successfully."
+        }
+    }
+}
